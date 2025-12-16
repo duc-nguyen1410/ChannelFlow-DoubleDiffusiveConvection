@@ -30,6 +30,7 @@ namespace chflow {
 
 enum class ddc_continuationParameter {
     none,
+    kxkz,
     Lx,
     Lz,
     Ri,
@@ -40,7 +41,9 @@ enum class ddc_continuationParameter {
     Rsep,
     Rey,
     gammax,
-    gammaz
+    gammaz,
+    Uw,
+    Ek
 };
 
 // Real GMRESHookstep_vector (FlowField& u, FlowField& alpha, Real& T, FieldSymmetry& sigma,
@@ -62,7 +65,13 @@ FlowField totalTemperature(const FlowField& temp, const DDCFlags flags);
 FlowField totalSalinity(const FlowField& salt, const DDCFlags flags);
 Real heatcontent(const FlowField& ttot, const DDCFlags flags);
 Real saltcontent(const FlowField& stot, const DDCFlags flags);
-
+Real dissipation(const FlowField& u, const DDCFlags flags, bool normalize = true, bool relative = true);
+Real heatflux(const FlowField& ttot, const DDCFlags flags, bool normalize = true, bool relative = true);
+Real massflux(const FlowField& stot, const DDCFlags flags, bool normalize = true, bool relative = true);
+Real Nusselt_t_plane(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative = true);
+Real Nusselt_c_plane(const FlowField& utot, const FlowField& stot, const DDCFlags flags, bool relative = true);
+Real buoyPowerInput(const FlowField& utot, const FlowField& ttot, const FlowField& stot, const DDCFlags flags, bool relative=true);
+// Real UdPcontent(const FlowField& utot, const DDCFlags flags);
 class ddcDSI : public cfDSI {
    public:
     /** \brief default constructor */

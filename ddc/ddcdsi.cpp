@@ -13,6 +13,7 @@
 #include "cfbasics/mathdefs.h"
 #include "channelflow/diffops.h"
 // #include "viscoelastic/veutils.h"
+
 #include "modules/ddc/ddc.h"
 
 using namespace std;
@@ -35,10 +36,10 @@ std::vector<Real> ddcstats(const FlowField& u, const FlowField& temp, const Flow
     Real KE = 0.5*L2Norm2(u); stats.push_back(KE);
     Real PE = 0.5*flags.Ri*L2Norm2(temp); stats.push_back(PE);
     stats.push_back(KE+PE);
-    stats.push_back(dissipation(u_tot));
+    stats.push_back(dissipation(u_tot,flags));
 
     stats.push_back(wallshearUpper(u_tot)); // for Langham2019JFM
-    stats.push_back(wallshear(u_tot)); // I
+    stats.push_back(wallshear(u_tot)); // 
     stats.push_back(L2Norm(u));
     stats.push_back(L2Norm(u_tot));
     stats.push_back(L2Norm3d(u));
@@ -49,10 +50,22 @@ std::vector<Real> ddcstats(const FlowField& u, const FlowField& temp, const Flow
     stats.push_back(L2Norm(temp));
     stats.push_back(L2Norm(temp_tot));
     stats.push_back(heatcontent(temp_tot, flags));// averaged temp
+    stats.push_back(heatflux(temp_tot, flags));// J_t
+    stats.push_back(Nusselt_t_plane(u_tot, temp_tot, flags));// Nu_t
 
     stats.push_back(L2Norm(salt));
     stats.push_back(L2Norm(salt_tot));
     stats.push_back(saltcontent(salt_tot, flags));// averaged salt
+    #ifdef P6
+    stats.push_back(massflux(salt_tot, flags));// J_c
+    stats.push_back(Nusselt_c_plane(u_tot, salt_tot, flags));// Nu_c
+    #endif
+    // stats.push_back(abs(temp_tot.dudy_a()));
+    // stats.push_back(abs(salt_tot.dudy_a()));
+
+    stats.push_back(buoyPowerInput(u_tot, temp_tot, salt_tot, flags));
+
+    // stats.push_back(UdPcontent(u_tot, flags));
     
     return stats;
 }
@@ -75,11 +88,23 @@ string ddcfieldstatsheader(const DDCFlags flags) {
 
             << setw(14) << "L2(T')" 
             << setw(14) << "L2(T)" 
-            << setw(10) << "<T>(y=" << flags.ystats << ")" 
+            << setw(14) << "<T>a" 
+            << setw(14) << "heatflux" 
+            << setw(14) << "Nu_t" 
 
             << setw(14) << "L2(S')" 
             << setw(14) << "L2(S)" 
-            << setw(10) << "<S>(y=" << flags.ystats << ")"
+            << setw(14) << "<S>a"
+            #ifdef P6
+            << setw(14) << "massflux" 
+            << setw(14) << "Nu_c" 
+            #endif
+            // << setw(14) << "Nu" 
+            // << setw(14) << "Sh"
+
+            << setw(14) << "buoyPowIn"
+
+            // << setw(14) << "UdP"
             ;
     return header.str();
 }
@@ -207,6 +232,393 @@ Real saltcontent(const FlowField& stot, const DDCFlags flags) {
     MPI_Bcast(&avt, 1, MPI_DOUBLE, stot.task_coeff(0, 0), stot.cfmpi()->comm_world);
 #endif
     return avt;
+}
+
+// Real UdPcontent(const FlowField& utot, const DDCFlags flags) {
+
+//     FlowField u(utot);
+//     Vector y = u.ygridpts();
+//     // FlowField dP(Pbasey_);
+//     // FlowField dP(u.Nx(), u.Ny(), u.Nz(), 1, u.Lx(), u.Lz(), u.a(), u.b(), u.cfmpi(), Physical, Physical);
+//     // dP+=flags.Pbasey_;
+//     FlowField yinput(u.Nx(), u.Ny(), u.Nz(), 1, u.Lx(), u.Lz(), u.a(), u.b(), u.cfmpi(), Physical, Physical);
+//     lint Nz = u.Nz();
+//     lint nxlocmin = u.nxlocmin();
+//     lint nxlocmax = u.nxlocmin() + u.Nxloc();
+//     lint nylocmin = u.nylocmin();
+//     lint nylocmax = u.nylocmax();
+
+//     u.makePhysical();
+//     // dP.makePhysical();
+// #ifdef HAVE_MPI
+//     for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+//         for (lint nz = 0; nz < Nz; ++nz)
+//             for (lint ny = nylocmin; ny < nylocmax; ++ny) {
+//                 yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * y(ny);
+//             }
+// #else
+//     for (lint ny = nylocmin; ny < nylocmax; ++ny)
+//         for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+//             for (lint nz = 0; nz < Nz; ++nz) {
+//                 yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * y(ny);
+//             }
+// #endif
+//     yinput.makeSpectral();
+
+//     ChebyCoeff yprof(u.My(), u.a(), u.b(), Spectral);
+//     Real ytmp = 0;
+//     for (int ny = 0; ny < u.My(); ++ny) {
+//         if (u.taskid() == 0) {
+//             ytmp = Re(yinput.cmplx(0, ny, 0, 0)); 
+//         }
+// #ifdef HAVE_MPI
+//         MPI_Bcast(&ytmp, 1, MPI_DOUBLE, u.task_coeff(0, 0), *u.comm_world());
+// #endif
+//         yprof[ny] = ytmp;
+//     }
+
+//     Real output = yprof.mean();
+// #ifdef HAVE_MPI
+//     MPI_Bcast(&output, 1, MPI_DOUBLE, u.task_coeff(0, 0), u.cfmpi()->comm_world);
+// #endif
+//     return output;
+
+//     // assert(utot.ystate() == Spectral);
+
+//     // ChebyCoeff uprof = Re(utot.profile(0, 0, 0));
+//     // ChebyCoeff UdP = uprof[1]*Py;
+
+//     // int N = 100;
+//     // Real dy = (flags.ystats - stot.a()) / (N - 1);
+//     // Real avt = 0;  // average salinity
+//     // if (stot.taskid() == stot.task_coeff(0, 0)) {
+//     //     ChebyCoeff sprof = Re(stot.profile(0, 0, 0));
+//     //     for (int i = 0; i < N; ++i) {
+//     //         Real y = stot.a() + i * dy;
+//     //         avt += sprof.eval(y);
+//     //     }
+//     //     avt *= 1.0 / N;
+//     // }
+// // #ifdef HAVE_MPI
+// //     MPI_Bcast(&avt, 1, MPI_DOUBLE, stot.task_coeff(0, 0), stot.cfmpi()->comm_world);
+// // #endif
+// //     return avt;
+// }
+
+Real dissipation(const FlowField& utot, const DDCFlags flags, bool normalize, bool relative) {
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+
+    Real nu = P1;
+    
+    Real diss = nu * dissipation(utot, normalize);
+    // printf("dissipation=%f, nu=%f, diss=%f\n",dissipation(utot, normalize),flags.nu,diss);fflush(stdout);
+    // analytic laminar dissipation (for standard base flow)
+    Real sing = sin(flags.gammax);
+    Real grav = 1.0;
+    Real laminarDiss = grav * sing * sing / (720 * nu);  // normalized by Volume
+    // difference between full input and laminar input
+    if (relative && abs(laminarDiss) > 1e-12) {
+        diss *= 1.0 / laminarDiss;
+        diss -= 1;
+    }
+
+    return diss;
+}
+
+Real heatflux(const FlowField& temp, const DDCFlags flags, bool normalize, bool relative) {
+    // with reference to wallshear, but only lower wall
+    assert(temp.ystate() == Spectral);
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+
+    Real kappa = P5;
+    Real I = 0;
+    if (temp.taskid() == temp.task_coeff(0, 0)) {
+        ChebyCoeff tprof = Re(temp.profile(0, 0, 0));
+        ChebyCoeff dTdy = diff(tprof);
+        I = kappa * abs(dTdy.eval_a());
+    }
+#ifdef HAVE_MPI
+    MPI_Bcast(&I, 1, MPI_DOUBLE, temp.task_coeff(0, 0), temp.cfmpi()->comm_world);
+#endif
+    if (!normalize)
+        I *= 2 * temp.Lx() * temp.Lz();
+    if (relative) {
+        Real deltaT = flags.tlowerwall - flags.tupperwall;
+        Real H = temp.b() - temp.a();
+        I *= 1.0 / kappa / deltaT * H;
+        // I -= 1.0;
+    }
+    return I;
+}
+#ifdef P6
+Real massflux(const FlowField& temp, const DDCFlags flags, bool normalize, bool relative) {
+    // with reference to wallshear, but only lower wall
+    assert(temp.ystate() == Spectral);
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+    Real Le = flags.Le;
+
+    Real kappa = P6;
+    Real I = 0;
+    if (temp.taskid() == temp.task_coeff(0, 0)) {
+        ChebyCoeff tprof = Re(temp.profile(0, 0, 0));
+        ChebyCoeff dTdy = diff(tprof);
+        I = kappa * abs(dTdy.eval_a());
+    }
+#ifdef HAVE_MPI
+    MPI_Bcast(&I, 1, MPI_DOUBLE, temp.task_coeff(0, 0), temp.cfmpi()->comm_world);
+#endif
+    if (!normalize)
+        I *= 2 * temp.Lx() * temp.Lz();
+    if (relative) {
+        Real deltaC = flags.slowerwall - flags.supperwall;
+        Real H = temp.b() - temp.a();
+        I *= 1.0 / kappa / deltaC * H;
+        // I -= 1.0;
+    }
+    return I;
+}
+#endif
+Real Nusselt_t_plane(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative) {
+    assert(utot.ystate() == Spectral && ttot.ystate() == Spectral);
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+
+    // calculate product for advective heat transport
+    FlowField u(utot);
+    FlowField T(ttot);
+    FlowField vt(T.Nx(), T.Ny(), T.Nz(), T.Nd(), T.Lx(), T.Lz(), T.a(), T.b(), T.cfmpi(), Physical, Physical);
+    lint Nz = u.Nz();
+    lint nxlocmin = u.nxlocmin();
+    lint nxlocmax = u.nxlocmin() + u.Nxloc();
+    lint nylocmin = u.nylocmin();
+    lint nylocmax = u.nylocmax();
+
+    // loop to form product
+    u.makePhysical();
+    T.makePhysical();
+#ifdef HAVE_MPI
+    for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+        for (lint nz = 0; nz < Nz; ++nz)
+            for (lint ny = nylocmin; ny < nylocmax; ++ny) {
+                vt(nx, ny, nz, 0) = u(nx, ny, nz, 1) * T(nx, ny, nz, 0);
+            }
+#else
+    for (lint ny = nylocmin; ny < nylocmax; ++ny)
+        for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+            for (lint nz = 0; nz < Nz; ++nz) {
+                vt(nx, ny, nz, 0) = u(nx, ny, nz, 1) * T(nx, ny, nz, 0);
+            }
+#endif
+    vt.makeSpectral();
+
+    // calculate Nusselt number
+    Real Nu = 0;
+    Real y = flags.ystats;
+    Real kappa = P5;
+    if (ttot.taskid() == ttot.task_coeff(0, 0)) {
+        ChebyCoeff tprof = Re(ttot.profile(0, 0, 0));
+        ChebyCoeff dTdy = diff(tprof);
+        ChebyCoeff vtprof = Re(vt.profile(0, 0, 0));
+        Nu = vtprof.eval(y) -
+             kappa * dTdy.eval(y);  // Formula 10 in Chilla&Schumacher 2012 (together with normalization below)
+    }
+
+#ifdef HAVE_MPI
+    MPI_Bcast(&Nu, 1, MPI_DOUBLE, ttot.task_coeff(0, 0), ttot.cfmpi()->comm_world);
+#endif
+
+    if (relative) {
+        Real deltaT = flags.tlowerwall - flags.tupperwall;
+        Real H = utot.b() - utot.a();
+        Nu *= 1.0 / kappa / deltaT * H;
+        // Nu -= 1.0;
+    }
+    return Nu;
+}
+
+#ifdef P6
+Real Nusselt_c_plane(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative) {
+    assert(utot.ystate() == Spectral && ttot.ystate() == Spectral);
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+    Real Le = flags.Le;
+
+    // calculate product for advective heat transport
+    FlowField u(utot);
+    FlowField T(ttot);
+    FlowField vt(T.Nx(), T.Ny(), T.Nz(), T.Nd(), T.Lx(), T.Lz(), T.a(), T.b(), T.cfmpi(), Physical, Physical);
+    lint Nz = u.Nz();
+    lint nxlocmin = u.nxlocmin();
+    lint nxlocmax = u.nxlocmin() + u.Nxloc();
+    lint nylocmin = u.nylocmin();
+    lint nylocmax = u.nylocmax();
+
+    // loop to form product
+    u.makePhysical();
+    T.makePhysical();
+#ifdef HAVE_MPI
+    for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+        for (lint nz = 0; nz < Nz; ++nz)
+            for (lint ny = nylocmin; ny < nylocmax; ++ny) {
+                vt(nx, ny, nz, 0) = u(nx, ny, nz, 1) * T(nx, ny, nz, 0);
+            }
+#else
+    for (lint ny = nylocmin; ny < nylocmax; ++ny)
+        for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+            for (lint nz = 0; nz < Nz; ++nz) {
+                vt(nx, ny, nz, 0) = u(nx, ny, nz, 1) * T(nx, ny, nz, 0);
+            }
+#endif
+    vt.makeSpectral();
+
+    // calculate Nusselt number
+    Real Nu = 0;
+    Real y = flags.ystats;
+    Real kappa = P6;
+    if (ttot.taskid() == ttot.task_coeff(0, 0)) {
+        ChebyCoeff tprof = Re(ttot.profile(0, 0, 0));
+        ChebyCoeff dTdy = diff(tprof);
+        ChebyCoeff vtprof = Re(vt.profile(0, 0, 0));
+        Nu = vtprof.eval(y) -
+             kappa * dTdy.eval(y);  // Formula 10 in Chilla&Schumacher 2012 (together with normalization below)
+    }
+
+#ifdef HAVE_MPI
+    MPI_Bcast(&Nu, 1, MPI_DOUBLE, ttot.task_coeff(0, 0), ttot.cfmpi()->comm_world);
+#endif
+
+    if (relative) {
+        Real deltaC = flags.slowerwall - flags.supperwall;
+        Real H = utot.b() - utot.a();
+        Nu *= 1.0 / kappa / deltaC * H;
+        // I -= 1.0;
+    }
+    return Nu;
+}
+#endif
+
+Real buoyPowerInput(const FlowField& utot, const FlowField& ttot, const FlowField& stot, const DDCFlags flags, bool relative) {
+    // calculate the bouyancy force along the velocity field to get
+    // the power input to the kinetic energy equation
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+    
+    Real nu = P1;
+
+    Real sing = sin(flags.gammax);
+    Real cosg = cos(flags.gammax);
+    Real grav = 1.0; 
+    Real laminarInput = grav * sing * sing / (720 * nu);  // normalized by Volume
+
+    // prepare loop over field
+    FlowField u(utot);
+    FlowField T(ttot);
+    FlowField S(stot);
+    FlowField xinput(T.Nx(), T.Ny(), T.Nz(), T.Nd(), T.Lx(), T.Lz(), T.a(), T.b(), T.cfmpi(), Physical, Physical);
+    FlowField yinput(T.Nx(), T.Ny(), T.Nz(), T.Nd(), T.Lx(), T.Lz(), T.a(), T.b(), T.cfmpi(), Physical, Physical);
+    lint Nz = u.Nz();
+    lint nxlocmin = u.nxlocmin();
+    lint nxlocmax = u.nxlocmin() + u.Nxloc();
+    lint nylocmin = u.nylocmin();
+    lint nylocmax = u.nylocmax();
+
+    // sum up buoyancy term U*F = p2(p3*T-p4*S)*U
+    u.makePhysical();
+    T.makePhysical();
+    S.makePhysical();
+#ifdef HAVE_MPI
+    for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+        for (lint nz = 0; nz < Nz; ++nz)
+            for (lint ny = nylocmin; ny < nylocmax; ++ny) {
+                #ifdef P6
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*(P3*T(nx, ny, nz, 0) - P4*S(nx, ny, nz, 0));
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*(P3*T(nx, ny, nz, 0) - P4*S(nx, ny, nz, 0));
+                #elif defined(P5)
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*P3*T(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*P3*T(nx, ny, nz, 0);
+                #endif
+            }
+#else
+    for (lint ny = nylocmin; ny < nylocmax; ++ny)
+        for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+            for (lint nz = 0; nz < Nz; ++nz) {
+                #ifdef P6
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*(P3*T(nx, ny, nz, 0) - P4*S(nx, ny, nz, 0));
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*(P3*T(nx, ny, nz, 0) - P4*S(nx, ny, nz, 0));
+                #elif defined(P5)
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*P3*T(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*P3*T(nx, ny, nz, 0);
+                #endif
+            }
+#endif
+    xinput.makeSpectral();
+    yinput.makeSpectral();
+
+    // calculate the input mean with cheby profile (code is taken from OBE::initConstraint)
+    ChebyCoeff xprof(T.My(), T.a(), T.b(), Spectral);
+    ChebyCoeff yprof(T.My(), T.a(), T.b(), Spectral);
+    Real xtmp = 0;
+    Real ytmp = 0;
+    for (int ny = 0; ny < T.My(); ++ny) {
+        if (utot.taskid() == 0) {
+            xtmp = sing * Re(xinput.cmplx(0, ny, 0, 0)); // U*F * sin(gammax)*ex
+            ytmp = cosg * Re(yinput.cmplx(0, ny, 0, 0)); // U*F * cos(gammax)*ey
+        }
+#ifdef HAVE_MPI
+        MPI_Bcast(&xtmp, 1, MPI_DOUBLE, utot.task_coeff(0, 0), *utot.comm_world());
+        MPI_Bcast(&ytmp, 1, MPI_DOUBLE, utot.task_coeff(0, 0), *utot.comm_world());
+#endif
+        xprof[ny] = xtmp;
+        yprof[ny] = ytmp;
+    }
+
+    Real buoyancyInput = xprof.mean() + yprof.mean();
+    // printf("xprof.mean()=%f, yprof.mean()=%f, buoyancyInput=%f\n",xprof.mean(),yprof.mean(),buoyancyInput);fflush(stdout);
+    // difference between full input and laminar input
+    if (relative && abs(laminarInput) > 1e-12) {
+        buoyancyInput *= 1.0 / laminarInput;
+        buoyancyInput -= 1;
+    }
+
+    return buoyancyInput;
 }
 
 
@@ -611,7 +1023,11 @@ void ddcDSI::updateMu(Real mu) {
     DSI::updateMu(mu);
     if (ddc_cPar_ == ddc_continuationParameter::none) {
         cfDSI::updateMu(mu);
-    }else if (ddc_cPar_ == ddc_continuationParameter::Lx) {
+    } else if (ddc_cPar_ == ddc_continuationParameter::kxkz) {
+        ddcflags_.kxkz = mu;
+        Lx_ = 2*M_PI/mu;
+        Lz_ = 2*M_PI/mu;
+    } else if (ddc_cPar_ == ddc_continuationParameter::Lx) {
         Lx_ = mu;
     } else if (ddc_cPar_ == ddc_continuationParameter::Lz) {
         Lz_ = mu;
@@ -633,6 +1049,12 @@ void ddcDSI::updateMu(Real mu) {
         ddcflags_.gammax = mu;
     }else if (ddc_cPar_ == ddc_continuationParameter::gammaz) {
         ddcflags_.gammaz = mu;
+    }else if (ddc_cPar_ == ddc_continuationParameter::Uw) {
+        ddcflags_.Uwall = mu;
+        ddcflags_.ulowerwall = -0.5*mu;
+        ddcflags_.uupperwall = 0.5*mu;
+    }else if (ddc_cPar_ == ddc_continuationParameter::Ek) {
+        ddcflags_.Ek = mu;
     }else {
         throw invalid_argument("ddcDSI::updateMu(): continuation parameter is unknown");
     }
@@ -650,6 +1072,9 @@ void ddcDSI::chooseMuDDC(string muName) {
 void ddcDSI::chooseMuDDC(ddc_continuationParameter mu) {
     ddc_cPar_ = mu;
     switch (mu) {
+        case ddc_continuationParameter::kxkz:
+            updateMu(ddcflags_.kxkz);
+            break;
         case ddc_continuationParameter::Lx:
             updateMu(Lx_);
             break;
@@ -683,6 +1108,12 @@ void ddcDSI::chooseMuDDC(ddc_continuationParameter mu) {
         case ddc_continuationParameter::gammaz:
             updateMu(ddcflags_.gammaz);
             break;
+        case ddc_continuationParameter::Uw:
+            updateMu(ddcflags_.Uwall);
+            break;
+        case ddc_continuationParameter::Ek:
+            updateMu(ddcflags_.Ek);
+            break;
         case ddc_continuationParameter::none:
             throw invalid_argument(
                 "ddcDSI::chooseMu(): continuation parameter is none, we should not reach this point");
@@ -693,7 +1124,9 @@ void ddcDSI::chooseMuDDC(ddc_continuationParameter mu) {
 
 ddc_continuationParameter ddcDSI::s2ddc_cPar(string muname) {
     std::transform(muname.begin(), muname.end(), muname.begin(), ::tolower);  // why is the string made lower case?
-    if (muname == "lx")
+    if (muname == "kxkz")
+        return ddc_continuationParameter::kxkz;
+    else if (muname == "lx")
         return ddc_continuationParameter::Lx;
     else if (muname == "lz")
         return ddc_continuationParameter::Lz;
@@ -715,6 +1148,10 @@ ddc_continuationParameter ddcDSI::s2ddc_cPar(string muname) {
         return ddc_continuationParameter::gammax;
     else if (muname == "gammaz")
         return ddc_continuationParameter::gammaz;
+    else if (muname == "uw")
+        return ddc_continuationParameter::Uw;
+    else if (muname == "ek")
+        return ddc_continuationParameter::Ek;
     else {
         cout << "ddcDSI::s2ddc_cPar(): ddc_continuation parameter '"+muname+"' is unknown, defaults to 'none'" << endl;
         return ddc_continuationParameter::none;
@@ -726,6 +1163,8 @@ string ddcDSI::printMu() { return ddc_cPar2s(ddc_cPar_); }
 string ddcDSI::ddc_cPar2s(ddc_continuationParameter ddc_cPar) {
     if (ddc_cPar == ddc_continuationParameter::none)
         return cfDSI::cPar2s(cPar_);
+    else if (ddc_cPar == ddc_continuationParameter::kxkz)
+        return "kxkz";
     else if (ddc_cPar == ddc_continuationParameter::Lx)
         return "Lx";
     else if (ddc_cPar == ddc_continuationParameter::Lz)
@@ -748,6 +1187,10 @@ string ddcDSI::ddc_cPar2s(ddc_continuationParameter ddc_cPar) {
         return "gammax";
     else if (ddc_cPar == ddc_continuationParameter::gammaz)
         return "gammaz";
+    else if (ddc_cPar == ddc_continuationParameter::Uw)
+        return "Uw";
+    else if (ddc_cPar == ddc_continuationParameter::Ek)
+        return "Ek";
     else
         throw invalid_argument("ddcDSI::ddc_cPar2s(): continuation parameter is not convertible to string");
 }

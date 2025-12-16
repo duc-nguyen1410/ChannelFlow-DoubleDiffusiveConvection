@@ -10,15 +10,20 @@ set(
     ${CMAKE_CURRENT_SOURCE_DIR}/dde.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ddc.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ddcdsi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ddchelmholtz.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ddctausolver.cpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/ddcalgo.cpp
 )
 
 set(
     ddc_HEADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/macros.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ddcflags.h
     ${CMAKE_CURRENT_SOURCE_DIR}/dde.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ddc.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ddcdsi.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ddchelmholtz.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ddctausolver.h
     ${CMAKE_CURRENT_SOURCE_DIR}/addPerturbations.h
     ${CMAKE_CURRENT_SOURCE_DIR}/boundaryCondition.h
     ${CMAKE_CURRENT_SOURCE_DIR}/turbulenceStatistics.h

@@ -82,6 +82,7 @@ with a few parameters:
 |`-Ra <value>`| $10^3$ | Thermal Rayleigh number $Ra_T=\frac{g\alpha\Delta T H^3}{\nu\kappa_T}$|
 |`-Le <value>`| $100$ | Lewis number $Le=\frac{\kappa_T}{\kappa_S}$ |
 |`-Rr <value>`| $2$ | Density stability ratio $R_\rho=\frac{\alpha \Delta T}{\beta \Delta S}$ |
+|`-GammaX <value>`| $0$ | Inclined angle $\gamma$ |
 |`-Ua <value>`| $0$ | X-velocity at lower wall, U(y=a) |
 |`-Ub <value>`| $0$ | X-velocity at upper wall, U(y=b) |
 |`-Wa <value>`| $0$ | Z-velocity at lower wall, W(y=a) |
@@ -92,7 +93,9 @@ with a few parameters:
 |`-Sb <value>`| $1$ | Salinity at upper wall, S(y=b) |
 |`-T0 <value>`| $0$ | Start time of DNS |
 |`-T <value>`| $20$ | Final time of DNS |
-|`-dt <value>`| $0.03125$ | Timestep |
+|`-dt <value>`| $0.03125$ | Time step |
+|`-dtmin <value>`| $0.03125$ | Min. time step |
+|`-dtmix <value>`| $0.1$ | Max. time step |
 |`-dT <value>`| $1$ | Save interval |
 |`-nl <value>`| "rot" | Method of calculating  nonlinearity, one of [rot\|conv\|div\|skew\|alt\|linear] |
 

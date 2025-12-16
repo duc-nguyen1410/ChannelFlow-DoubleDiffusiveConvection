@@ -13,73 +13,43 @@
 #ifdef FREESLIP
 namespace chflow {
 void freeslipBC(std::vector<FlowField>& fields) {
-    FlowField u = fields[0];
     
-    if (u.Nd() != 3) {
-        cferror("freeslipBC(u): u.Nd() = " + i2s(u.Nd()) + " != 3");
+    if (fields[0].Nd() != 3) {
+        cferror("freeslipBC(u): u.Nd() = " + i2s(fields[0].Nd()) + " != 3");
         exit(1);
     }
     
-    u.makePhysical();
-    #ifdef P5
-    FlowField temp = fields[1];
-    temp.makePhysical();
-    #endif
-    #ifdef P6
-    FlowField salt = fields[2];
-    salt.makePhysical();
-    #endif
+    fields[0].makePhysical();
 
-    lint Nz = u.Nz();
-    lint nxlocmin = u.nxlocmin();
-    lint nxlocmax = u.nxlocmin() + u.Nxloc();
-    lint nylocmin = u.nylocmin();
-    lint nylocmax = u.nylocmax();
+    lint Nz = fields[0].Nz();
+    lint nxlocmin = fields[0].nxlocmin();
+    lint nxlocmax = fields[0].nxlocmin() + fields[0].Nxloc();
+    lint nylocmin = fields[0].nylocmin();
+    lint nylocmax = fields[0].nylocmax();
     
     // top
     if(nylocmin == 0){
         for (lint nx = nxlocmin; nx < nxlocmax; ++nx){
             for (lint nz = 0; nz < Nz; ++nz) {
-                u(nx, nylocmin, nz, 0) = u(nx, nylocmin+1, nz, 0); // du/dy=0
-                u(nx, nylocmin, nz, 1) = 0; // No-penetration
-                u(nx, nylocmin, nz, 2) = u(nx, nylocmin+1, nz, 2); // dw/dy=0
-                #ifdef P5
-                temp(nx, nylocmin, nz, 0) = 0; // constant temperature
-                #endif
-                #ifdef P6
-                salt(nx, nylocmin, nz, 0) = 0; // constant salinity
-                #endif
+                fields[0](nx, nylocmin, nz, 0) = fields[0](nx, nylocmin+1, nz, 0); // du/dy=0
+                fields[0](nx, nylocmin, nz, 1) = 0; // No-penetration
+                fields[0](nx, nylocmin, nz, 2) = fields[0](nx, nylocmin+1, nz, 2); // dw/dy=0
             }
         }
     }
 
     // bottom
-    if(nylocmax == u.Ny()-1){
+    if(nylocmax == fields[0].Ny()-1){
         for (lint nx = nxlocmin; nx < nxlocmax; ++nx){
             for (lint nz = 0; nz < Nz; ++nz) {
-                u(nx, nylocmax, nz, 0) = u(nx, nylocmax-1, nz, 0); // du/dy=0
-                u(nx, nylocmax, nz, 1) = 0; // No-penetration
-                u(nx, nylocmax, nz, 2) = u(nx, nylocmax-1, nz, 2); // dw/dy=0
-                #ifdef P5
-                temp(nx, nylocmax, nz, 0) = 0; // constant temperature
-                #endif
-                #ifdef P6
-                salt(nx, nylocmax, nz, 0) = 0; // constant salinity
-                #endif
+                fields[0](nx, nylocmax, nz, 0) = fields[0](nx, nylocmax-1, nz, 0); // du/dy=0
+                fields[0](nx, nylocmax, nz, 1) = 0; // No-penetration
+                fields[0](nx, nylocmax, nz, 2) = fields[0](nx, nylocmax-1, nz, 2); // dw/dy=0
             }
         }
     }
 
-    u.makeSpectral();
-    fields[0] = u; // update velocity
-    #ifdef P5
-    temp.makeSpectral();
-    fields[1] = temp; // update velocity
-    #endif
-    #ifdef P6
-    salt.makeSpectral();
-    fields[2] = salt; // update velocity
-    #endif
+    fields[0].makeSpectral();
 }
 }  // namespace chflow
 #endif

@@ -20,6 +20,7 @@ void momentumNL(const FlowField& u, const FlowField& T, const FlowField& S,
     Real Rrho = flags.Rrho;
     Real Rsep = flags.Rsep;
     Real Ri = flags.Ri;
+    Real Ek = flags.Ek;
     Real sgammax = sin(flags.gammax);
     Real cgammax = cos(flags.gammax);
 
@@ -33,12 +34,18 @@ void momentumNL(const FlowField& u, const FlowField& T, const FlowField& S,
     for (int mz = f.mzlocmin(); mz < f.mzlocmin() + f.Mzloc(); mz++)
         for (int mx = f.mxlocmin(); mx < f.mxlocmin() + f.Mxloc(); mx++)
             for (int ny = 0; ny < f.Ny(); ny++) {
-                #if defined(P6)
+                #if defined(P6) // is for DDC
                 f.cmplx(mx, ny, mz, 0) -= P2*(P3*T.cmplx(mx, ny, mz, 0)-P4*S.cmplx(mx, ny, mz, 0))*sgammax;
                 f.cmplx(mx, ny, mz, 1) -= P2*(P3*T.cmplx(mx, ny, mz, 0)-P4*S.cmplx(mx, ny, mz, 0))*cgammax;
-                #elif defined(P5)
+                #elif defined(P5) // is for pure RBC
                 f.cmplx(mx, ny, mz, 0) -= P2*P3*T.cmplx(mx, ny, mz, 0)*sgammax;
                 f.cmplx(mx, ny, mz, 1) -= P2*P3*T.cmplx(mx, ny, mz, 0)*cgammax;
+                #endif
+                #if defined(P8) // P8 is for rotating flows
+                // Coriolis contribution: - 1/Ek * sqrt(Pr/Ra) * (ey × u)
+                // ey = (0,1,0)  (rotation about vertical y-axis)
+                f.cmplx(mx, ny, mz, 0) -= -P8 * u.cmplx(mx, ny, mz, 2); 
+                f.cmplx(mx, ny, mz, 1) -= -P8 * (-1) * u.cmplx(mx, ny, mz, 0);
                 #endif
             }
     #else
@@ -51,6 +58,12 @@ void momentumNL(const FlowField& u, const FlowField& T, const FlowField& S,
                 #elif defined(P5)
                 f.cmplx(mx, ny, mz, 0) -= P2*P3*T.cmplx(mx, ny, mz, 0)*sgammax;
                 f.cmplx(mx, ny, mz, 1) -= P2*P3*T.cmplx(mx, ny, mz, 0)*cgammax;
+                #endif
+                #if defined(P8) // P8 is for rotating flows
+                // Coriolis contribution: - 1/Ek * sqrt(Pr/Ra) * (ey × u)
+                // ey = (0,1,0)  (rotation about vertical y-axis)
+                f.cmplx(mx, ny, mz, 0) -= -P8 * u.cmplx(mx, ny, mz, 2); 
+                f.cmplx(mx, ny, mz, 1) -= -P8 * (-1) * u.cmplx(mx, ny, mz, 0);
                 #endif
             }
     #endif

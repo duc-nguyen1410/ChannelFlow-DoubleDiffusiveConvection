@@ -16,28 +16,28 @@
 // #define P1 Pr 
 // #define P2 Pr*Ra
 // #define P3 1.0
-// #define P4 1.0/Rrho
+// #define P4 Rrho
 // #define P5 1.0
 // #define P6 1.0/Le
 
 // Example 2: Stationary/Moving-wall bounded double-diffusive convection
 // velocity is normalized by free-fall velocity (= boundary velocity U_b for case of Ri=1)
-// #define P1 sqrt(Pr/Ra) 
-// #define P2 1.0
-// #define P3 1.0
-// #define P4 Rrho
-// #define P5 1.0/sqrt(Pr*Ra)
-// #define P6 1.0/(Le*sqrt(Pr*Ra))
+// here: Rho ~ Salinity/Temperature
+#define P1 sqrt(Pr/Ra) 
+#define P2 1.0
+#define P3 1.0
+#define P4 Rrho
+#define P5 1.0/sqrt(Pr*Ra)
+#define P6 1.0/(Le*sqrt(Pr*Ra))
 
 // Example 3: Moving-wall bounded double-diffusive convection
 // velocity is normalized by boundary velocity U_b
-#define P1 1.0/Rey
-#define P2 Ri/(Rrho-1)
-#define P3 1.0
-#define P4 Rrho
-#define P5 1.0/(Rey*Pr)
-#define P6 1.0/(Le*Rey*Pr)
-
+// #define P1 1.0/Rey
+// #define P2 Ri/(Rrho-1)
+// #define P3 1.0
+// #define P4 Rrho
+// #define P5 1.0/(Rey*Pr)
+// #define P6 1.0/(Le*Rey*Pr)
 
 // Example 4: Binary fluid convection [Mercader2013JFM]
 // #define P1 Pr 
@@ -63,7 +63,24 @@
 // Example 7: Plane Couette flow 
 // #define P1 1.0/Rey
 
+// Example 8: Rotating RBC
+// #define P1 sqrt(Pr/Ra) 
+// #define P2 1.0
+// #define P3 1.0
+// #define P5 1.0/sqrt(Pr*Ra)
+// #define P8 (1.0/Ek*sqrt(Pr/Ra))  // Coriolis term coefficient
+
+// Example 9: Rotating salt-finger convection 
+// here: Rho ~ Temperature/Salinity
+// #define P1 sqrt(Pr/Ra) 
+// #define P2 1.0
+// #define P3 1.0
+// #define P4 1.0/Rrho
+// #define P5 1.0/sqrt(Pr*Ra)
+// #define P6 1.0/(Le*sqrt(Pr*Ra))
+// #define P8 1.0/Ek*sqrt(Pr/Ra)  // Coriolis term coefficient
+
 // #define FREESLIP
-#define SAVESTATS
+// #define SAVESTATS
 // #define FREEZEvelocity
 #endif
