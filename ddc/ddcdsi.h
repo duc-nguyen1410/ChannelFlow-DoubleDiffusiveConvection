@@ -69,7 +69,9 @@ Real dissipation(const FlowField& u, const DDCFlags flags, bool normalize = true
 Real heatflux(const FlowField& ttot, const DDCFlags flags, bool normalize = true, bool relative = true);
 Real massflux(const FlowField& stot, const DDCFlags flags, bool normalize = true, bool relative = true);
 Real Nusselt_t_plane(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative = true);
-Real Nusselt_c_plane(const FlowField& utot, const FlowField& stot, const DDCFlags flags, bool relative = true);
+Real Nusselt_s_plane(const FlowField& utot, const FlowField& stot, const DDCFlags flags, bool relative = true);
+Real buoyPowerInput_t(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative=true);
+Real buoyPowerInput_s(const FlowField& utot, const FlowField& stot, const DDCFlags flags, bool relative=true);
 Real buoyPowerInput(const FlowField& utot, const FlowField& ttot, const FlowField& stot, const DDCFlags flags, bool relative=true);
 // Real UdPcontent(const FlowField& utot, const DDCFlags flags);
 class ddcDSI : public cfDSI {

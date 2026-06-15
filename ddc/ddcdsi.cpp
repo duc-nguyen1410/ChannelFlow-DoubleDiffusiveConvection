@@ -57,15 +57,13 @@ std::vector<Real> ddcstats(const FlowField& u, const FlowField& temp, const Flow
     stats.push_back(L2Norm(salt_tot));
     stats.push_back(saltcontent(salt_tot, flags));// averaged salt
     #ifdef P6
-    stats.push_back(massflux(salt_tot, flags));// J_c
-    stats.push_back(Nusselt_c_plane(u_tot, salt_tot, flags));// Nu_c
+    stats.push_back(massflux(salt_tot, flags));// J_t
+    stats.push_back(Nusselt_s_plane(u_tot, salt_tot, flags));// Nu_s
     #endif
-    // stats.push_back(abs(temp_tot.dudy_a()));
-    // stats.push_back(abs(salt_tot.dudy_a()));
 
     stats.push_back(buoyPowerInput(u_tot, temp_tot, salt_tot, flags));
-
-    // stats.push_back(UdPcontent(u_tot, flags));
+    stats.push_back(buoyPowerInput_t(u_tot, temp_tot, flags));
+    stats.push_back(buoyPowerInput_s(u_tot, salt_tot, flags));
     
     return stats;
 }
@@ -89,22 +87,20 @@ string ddcfieldstatsheader(const DDCFlags flags) {
             << setw(14) << "L2(T')" 
             << setw(14) << "L2(T)" 
             << setw(14) << "<T>a" 
-            << setw(14) << "heatflux" 
-            << setw(14) << "Nu_t" 
+            << setw(14) << "F_t" // heat flux at wall, only conductive flux
+            << setw(14) << "Nu_t" // heat flux at mid-plane, including conductive and convective fluxes
 
             << setw(14) << "L2(S')" 
             << setw(14) << "L2(S)" 
             << setw(14) << "<S>a"
             #ifdef P6
-            << setw(14) << "massflux" 
-            << setw(14) << "Nu_c" 
+            << setw(14) << "F_s" // salt flux at wall, only conductive flux
+            << setw(14) << "Nu_s" // salt flux at mid-plane, including conductive and convective fluxes
             #endif
-            // << setw(14) << "Nu" 
-            // << setw(14) << "Sh"
 
             << setw(14) << "buoyPowIn"
-
-            // << setw(14) << "UdP"
+            << setw(14) << "buoyPowIn_t"
+            << setw(14) << "buoyPowIn_s"
             ;
     return header.str();
 }
@@ -463,7 +459,7 @@ Real Nusselt_t_plane(const FlowField& utot, const FlowField& ttot, const DDCFlag
 }
 
 #ifdef P6
-Real Nusselt_c_plane(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative) {
+Real Nusselt_s_plane(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative) {
     assert(utot.ystate() == Spectral && ttot.ystate() == Spectral);
 
     // get parameters
@@ -528,6 +524,184 @@ Real Nusselt_c_plane(const FlowField& utot, const FlowField& ttot, const DDCFlag
     return Nu;
 }
 #endif
+
+Real buoyPowerInput_t(const FlowField& utot, const FlowField& ttot, const DDCFlags flags, bool relative) {
+    // calculate the bouyancy force from temperature
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+    
+    Real nu = P1;
+
+    Real sing = sin(flags.gammax);
+    Real cosg = cos(flags.gammax);
+    Real grav = 1.0; 
+    Real laminarInput = grav * sing * sing / (720 * nu);  // normalized by Volume
+
+    // prepare loop over field
+    FlowField u(utot);
+    FlowField T(ttot);
+    FlowField xinput(T.Nx(), T.Ny(), T.Nz(), T.Nd(), T.Lx(), T.Lz(), T.a(), T.b(), T.cfmpi(), Physical, Physical);
+    FlowField yinput(T.Nx(), T.Ny(), T.Nz(), T.Nd(), T.Lx(), T.Lz(), T.a(), T.b(), T.cfmpi(), Physical, Physical);
+    lint Nz = u.Nz();
+    lint nxlocmin = u.nxlocmin();
+    lint nxlocmax = u.nxlocmin() + u.Nxloc();
+    lint nylocmin = u.nylocmin();
+    lint nylocmax = u.nylocmax();
+
+    // sum up buoyancy term F_t = p2*p3*T*U
+    u.makePhysical();
+    T.makePhysical();
+#ifdef HAVE_MPI
+    for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+        for (lint nz = 0; nz < Nz; ++nz)
+            for (lint ny = nylocmin; ny < nylocmax; ++ny) {
+                #ifdef P6
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*P3*T(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*P3*T(nx, ny, nz, 0);
+                #elif defined(P5)
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*P3*T(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*P3*T(nx, ny, nz, 0);
+                #endif
+            }
+#else
+    for (lint ny = nylocmin; ny < nylocmax; ++ny)
+        for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+            for (lint nz = 0; nz < Nz; ++nz) {
+                #ifdef P6
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*P3*T(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*P3*T(nx, ny, nz, 0);
+                #elif defined(P5)
+                xinput(nx, ny, nz, 0) = u(nx, ny, nz, 0) * P2*P3*T(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = u(nx, ny, nz, 1) * P2*P3*T(nx, ny, nz, 0);
+                #endif
+            }
+#endif
+    xinput.makeSpectral();
+    yinput.makeSpectral();
+
+    // calculate the input mean with cheby profile (code is taken from OBE::initConstraint)
+    ChebyCoeff xprof(T.My(), T.a(), T.b(), Spectral);
+    ChebyCoeff yprof(T.My(), T.a(), T.b(), Spectral);
+    Real xtmp = 0;
+    Real ytmp = 0;
+    for (int ny = 0; ny < T.My(); ++ny) {
+        if (utot.taskid() == 0) {
+            xtmp = sing * Re(xinput.cmplx(0, ny, 0, 0)); // U*F * sin(gammax)*ex
+            ytmp = cosg * Re(yinput.cmplx(0, ny, 0, 0)); // U*F * cos(gammax)*ey
+        }
+#ifdef HAVE_MPI
+        MPI_Bcast(&xtmp, 1, MPI_DOUBLE, utot.task_coeff(0, 0), *utot.comm_world());
+        MPI_Bcast(&ytmp, 1, MPI_DOUBLE, utot.task_coeff(0, 0), *utot.comm_world());
+#endif
+        xprof[ny] = xtmp;
+        yprof[ny] = ytmp;
+    }
+
+    Real buoyancyInput = xprof.mean() + yprof.mean();
+    // printf("xprof.mean()=%f, yprof.mean()=%f, buoyancyInput=%f\n",xprof.mean(),yprof.mean(),buoyancyInput);fflush(stdout);
+    // difference between full input and laminar input
+    if (relative && abs(laminarInput) > 1e-12) {
+        buoyancyInput *= 1.0 / laminarInput;
+        buoyancyInput -= 1;
+    }
+
+    return buoyancyInput;
+}
+
+Real buoyPowerInput_s(const FlowField& utot, const FlowField& stot, const DDCFlags flags, bool relative) {
+    // calculate the bouyancy force from salinity
+
+    // get parameters
+    Real Rey = flags.Rey;
+    Real Pr = flags.Pr;
+    Real Ra = flags.Ra;
+    Real Rrho = flags.Rrho;
+    Real Rsep = flags.Rsep;
+    Real Ri = flags.Ri;
+    
+    Real nu = P1;
+
+    Real sing = sin(flags.gammax);
+    Real cosg = cos(flags.gammax);
+    Real grav = 1.0; 
+    Real laminarInput = grav * sing * sing / (720 * nu);  // normalized by Volume
+
+    // prepare loop over field
+    FlowField u(utot);
+    FlowField S(stot);
+    FlowField xinput(S.Nx(), S.Ny(), S.Nz(), S.Nd(), S.Lx(), S.Lz(), S.a(), S.b(), S.cfmpi(), Physical, Physical);
+    FlowField yinput(S.Nx(), S.Ny(), S.Nz(), S.Nd(), S.Lx(), S.Lz(), S.a(), S.b(), S.cfmpi(), Physical, Physical);
+    lint Nz = u.Nz();
+    lint nxlocmin = u.nxlocmin();
+    lint nxlocmax = u.nxlocmin() + u.Nxloc();
+    lint nylocmin = u.nylocmin();
+    lint nylocmax = u.nylocmax();
+
+    // sum up buoyancy term F_s = -p2*p4*S*U
+    u.makePhysical();
+    S.makePhysical();
+#ifdef HAVE_MPI
+    for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+        for (lint nz = 0; nz < Nz; ++nz)
+            for (lint ny = nylocmin; ny < nylocmax; ++ny) {
+                #ifdef P6
+                xinput(nx, ny, nz, 0) = -1.0 * u(nx, ny, nz, 0) * P2*P4*S(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = -1.0 * u(nx, ny, nz, 1) * P2*P4*S(nx, ny, nz, 0);
+                #elif defined(P5)
+                xinput(nx, ny, nz, 0) = 0;
+                yinput(nx, ny, nz, 0) = 0;
+                #endif
+            }
+#else
+    for (lint ny = nylocmin; ny < nylocmax; ++ny)
+        for (lint nx = nxlocmin; nx < nxlocmax; ++nx)
+            for (lint nz = 0; nz < Nz; ++nz) {
+                #ifdef P6
+                xinput(nx, ny, nz, 0) = -1.0 * u(nx, ny, nz, 0) * P2*P4*S(nx, ny, nz, 0);
+                yinput(nx, ny, nz, 0) = -1.0 * u(nx, ny, nz, 1) * P2*P4*S(nx, ny, nz, 0);
+                #elif defined(P5)
+                xinput(nx, ny, nz, 0) = 0;
+                yinput(nx, ny, nz, 0) = 0;
+                #endif
+            }
+#endif
+    xinput.makeSpectral();
+    yinput.makeSpectral();
+
+    // calculate the input mean with cheby profile (code is taken from OBE::initConstraint)
+    ChebyCoeff xprof(S.My(), S.a(), S.b(), Spectral);
+    ChebyCoeff yprof(S.My(), S.a(), S.b(), Spectral);
+    Real xtmp = 0;
+    Real ytmp = 0;
+    for (int ny = 0; ny < S.My(); ++ny) {
+        if (utot.taskid() == 0) {
+            xtmp = sing * Re(xinput.cmplx(0, ny, 0, 0)); // U*F * sin(gammax)*ex
+            ytmp = cosg * Re(yinput.cmplx(0, ny, 0, 0)); // U*F * cos(gammax)*ey
+        }
+#ifdef HAVE_MPI
+        MPI_Bcast(&xtmp, 1, MPI_DOUBLE, utot.task_coeff(0, 0), *utot.comm_world());
+        MPI_Bcast(&ytmp, 1, MPI_DOUBLE, utot.task_coeff(0, 0), *utot.comm_world());
+#endif
+        xprof[ny] = xtmp;
+        yprof[ny] = ytmp;
+    }
+
+    Real buoyancyInput = xprof.mean() + yprof.mean();
+    // printf("xprof.mean()=%f, yprof.mean()=%f, buoyancyInput=%f\n",xprof.mean(),yprof.mean(),buoyancyInput);fflush(stdout);
+    // difference between full input and laminar input
+    if (relative && abs(laminarInput) > 1e-12) {
+        buoyancyInput *= 1.0 / laminarInput;
+        buoyancyInput -= 1;
+    }
+
+    return buoyancyInput;
+}
 
 Real buoyPowerInput(const FlowField& utot, const FlowField& ttot, const FlowField& stot, const DDCFlags flags, bool relative) {
     // calculate the bouyancy force along the velocity field to get
